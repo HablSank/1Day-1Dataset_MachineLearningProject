@@ -3,9 +3,15 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-st.title('Cardiovascular Prediction')
-st.write('Naive Bayes Gaussian')
+# 1. PAGE CONFIG (Wajib paling atas)
+st.set_page_config(
+    page_title="CardioGuard AI",
+    page_icon="🫀",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
+# --- ENGINE (LOGIC) TETAP SAMA ---
 class NaiveBayesGaussian:
     def fit(self, X, y):
         X = np.array(X)
@@ -13,19 +19,12 @@ class NaiveBayesGaussian:
         n_samples, n_features = X.shape
         self._classes = np.unique(y)
         n_classes = len(self._classes)
-
-        # Store Priors, Mean, Var
         self._priors = np.zeros(n_classes, dtype=np.float64)
         self._mean = np.zeros((n_classes, n_features), dtype=np.float64)
         self._var = np.zeros((n_classes, n_features), dtype=np.float64)
-
         for idx, c in enumerate(self._classes):
             X_c = X[y == c]
-            
-            # Calculate Priors
             self._priors[idx] = X_c.shape[0] / float(n_samples)
-            
-            # Calculate Statistics
             self._mean[idx, :] = X_c.mean(axis=0)
             self._var[idx, :] = X_c.var(axis=0) + 1e-9
 
@@ -40,161 +39,188 @@ class NaiveBayesGaussian:
             pdf = self._pdf(idx, x)
             likelihood = np.sum(np.log(pdf + 1e-9))
             posteriors.append(prior + likelihood)
-        
-        # Rumus Softmax untuk 2 kelas (biar jadi 0-1)
-        # Probabilitas Kelas 1 (Sakit)
         sick_prob = 1 / (1 + np.exp(posteriors[0] - posteriors[1])) 
         return sick_prob
 
-    def predict(self, X, threshold=0.5):
-        probs = self.predict_proba(X)
-        return (probs >= threshold).astype(int)
-
-    # Gaussian Function
     def _pdf(self, class_idx, x):
         mean = self._mean[class_idx]
         var = self._var[class_idx]
         numerator = np.exp(-((x - mean) ** 2) / (2 * var))
         denominator = np.sqrt(2 * np.pi * var)
         return numerator / denominator
-    
+
 @st.cache_resource
 def train_model():
     try:
+        # Coba baca dengan delimiter berbeda buat jaga-jaga
         df = pd.read_csv('cardiovascular.csv', delimiter=';')
         if df.shape[1] < 2:
             df = pd.read_csv('cardiovascular.csv', delimiter=',')
+            
         df.drop_duplicates(inplace=True)
-        df.dropna(inplace=True)
-        
+        # Preprocessing sesuai logic kamu
         df['age'] = (df['age'] / 365.25).astype(int)
         df['bmi'] = df['weight'] / (df['height'] / 100) ** 2
-        
         df = df[(df['ap_hi'] < 250) & (df['ap_hi'] > 60)]
         df = df[(df['ap_lo'] < 150) & (df['ap_lo'] > 40)]
         df = df[df['ap_hi'] >= df['ap_lo']]
-            
+        
         X = df[['age', 'gender', 'bmi', 'ap_hi', 'ap_lo', 'cholesterol', 'gluc', 'smoke', 'alco', 'active']].values
         y = df['cardio']
-
+        
         model = NaiveBayesGaussian()
         model.fit(X, y)
         return model
     except Exception as e:
         return None
 
-model = train_model()
+# --- UI DIMULAI DI SINI ---
+
+# Sidebar Title
+st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2966/2966486.png", width=80)
+st.sidebar.title("Parameter Pasien")
+st.sidebar.write("Isi data pasien di bawah ini:")
+
+# Load Model dengan Status Spinner (Lebih elegan)
+with st.spinner('Memuat Model AI...'):
+    model = train_model()
 
 if model is None:
-    st.error('Model Not Found')
+    st.error("❌ Model gagal dimuat. Cek file 'cardiovascular.csv'")
     st.stop()
 
-st.success('Model Loaded')
+# --- INPUT SECTION (DI SIDEBAR & DIKELOMPOKKAN) ---
+# Menggunakan Expander biar rapi
+with st.sidebar:
+    with st.expander("👤 Data Diri", expanded=True):
+        age = st.number_input('Umur (Tahun)', 10, 100, 50, help="Usia pasien dalam tahun")
+        gender = st.selectbox('Gender', [0, 1], format_func=lambda x: 'Wanita' if x==0 else 'Pria')
+        bmi = st.slider('BMI', 10.0, 50.0, 22.0, help="Body Mass Index")
 
+    with st.expander("🏥 Tanda Vital", expanded=True):
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            ap_hi = st.number_input('Systolic', 60, 240, 120, help="Tekanan Atas")
+        with col_s2:
+            ap_lo = st.number_input('Diastolic', 40, 180, 80, help="Tekanan Bawah")
+        
+        cholesterol = st.select_slider('Kolesterol', options=[1, 2, 3], format_func=lambda x: ['Normal', 'Agak Tinggi', 'Sangat Tinggi'][x-1])
+        gluc = st.select_slider('Glukosa (Gula)', options=[1, 2, 3], format_func=lambda x: ['Normal', 'Agak Tinggi', 'Sangat Tinggi'][x-1])
 
-col1, col2 = st.columns(2)
-with col1:
-    age = st.number_input('Age (Years)', min_value=10, value=50)
-    gender = st.selectbox('Gender', options=[0, 1], format_func=lambda x: 'Female' if x==0 else 'Male')
-    bmi = st.number_input('BMI (Body Mass Index)', value=22.0)
-    ap_hi = st.number_input('Upper Blood Pressure (Systolic)', value=120.0)
-    ap_lo = st.number_input('Lower Blood Pressure (Diastolic)', value=80.0)
-with col2:
-    cholesterol = st.selectbox('Cholesterol', options=[1, 2, 3], format_func=lambda x: ['Normal', 'Above Normal', 'Well Above Normal'][x-1])
-    gluc = st.selectbox('Glucose', options=[1, 2, 3], format_func=lambda x: ['Normal', 'Above Normal', 'Well Above Normal'][x-1])
-    smoke = st.radio('Smoke?', [0, 1], format_func=lambda x: 'No' if x==0 else 'Yes', horizontal=True)
-    alco = st.radio('Alcohol Intake?', [0, 1], format_func=lambda x: 'No' if x==0 else 'Yes', horizontal=True)
-    active = st.radio('Physical Activity?', [0, 1], format_func=lambda x: 'No' if x==0 else 'Yes', horizontal=True)
+    with st.expander("🍺 Gaya Hidup"):
+        smoke = st.checkbox("Merokok?", value=False)
+        alco = st.checkbox("Konsumsi Alkohol?", value=False)
+        active = st.checkbox("Rajin Olahraga?", value=True)
+
+    # Convert boolean ke int (0/1) untuk model
+    smoke = 1 if smoke else 0
+    alco = 1 if alco else 0
+    active = 1 if active else 0
     
-    
-if st.button('Predict Cardiovascular'):
-    input_data = [[age, gender, bmi, ap_hi, ap_lo, cholesterol, gluc, smoke, alco, active]]
-    cardio_proba = model.predict_proba(input_data)[0]
-    st.divider()
-    
-    col_res1, col_res2 = st.columns([1, 2])
-    with col_res1:
-        st.subheader("Hasil Prediksi")
-        if cardio_proba > 0.5:
-            st.error(f"⚠️ HIGH RISK")
-            st.write("It is recommended to consult a doctor.")
-        else:
-            st.success(f"✅ LOW RISK")
-            st.write("Keep up your healthy lifestyle.")
-            
-        st.metric("Cardiovascular Probability: ", f"{cardio_proba*100:.1f}%")
-        st.progress(cardio_proba)
-        
-    with col_res2:
-        st.subheader("📊 Visual Analysis (Gaussian)")
-        st.write("Your Position (Red Line) vs Average Healthy (Blue) & Sick People (Orange).")
-        
-        # Helper function
-        def plot_gaussian(feature_idx, feature_name, user_value):
-            mean0 = model._mean[0][feature_idx] # Sehat
-            var0 = model._var[0][feature_idx]
-            mean1 = model._mean[1][feature_idx] # Sakit
-            var1 = model._var[1][feature_idx]
-            std0 = np.sqrt(var0)
-            std1 = np.sqrt(var1)
-            
-            start_point = min(mean0 - 3*std0, mean1 - 3*std1, user_value - 10)
-            end_point = max(mean0 + 3*std0, mean1 + 3*std1, user_value + 10)
-            
-            x = np.linspace(start_point, end_point, 200)
-            
-            y0 = (1/np.sqrt(2*np.pi*var0)) * np.exp(-((x-mean0)**2)/(2*var0))
-            y1 = (1/np.sqrt(2*np.pi*var1)) * np.exp(-((x-mean1)**2)/(2*var1))
-            
-            fig, ax = plt.subplots(figsize=(6, 2.5)) # Agak tinggi dikit
-            
-            # Plot Kurva
-            ax.plot(x, y0, label='Sehat', color='blue', alpha=0.6)
-            ax.fill_between(x, y0, color='blue', alpha=0.1)
-            
-            ax.plot(x, y1, label='Berisiko', color='orange', alpha=0.6)
-            ax.fill_between(x, y1, color='orange', alpha=0.1)
-            
-            # Plot Garis User
-            ax.axvline(user_value, color='red', linestyle='--', linewidth=2, label='Kamu')
-            
-            # Tambahkan Text nilai user di atas garis merah biar jelas
-            ax.text(user_value, max(y0.max(), y1.max()) * 0.9, f'{user_value:.1f}', 
-                    color='red', ha='center', fontweight='bold', fontsize=9)
-            
-            ax.set_title(f"Distribusi {feature_name}")
-            ax.legend(fontsize='small', loc='upper right')
-            
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['left'].set_visible(False)
-            ax.set_yticks([]) # Hapus angka di sumbu Y (karena density gak terlalu penting buat user awam)
-            
-            st.pyplot(fig)
+    predict_btn = st.button("🔍 Analisa Risiko", type="primary", use_container_width=True)
 
-        # Plot 3 Fitur Paling Penting
-        # Index 3: ap_hi (Tekanan Darah), Index 2: BMI, Index 0: Age
-        plot_gaussian(3, "Tekanan Darah (Systolic)", ap_hi)
-        plot_gaussian(2, "Body Mass Index (BMI)", bmi)
+# --- MAIN CONTENT AREA ---
+st.title("🫀 CardioGuard AI")
+st.markdown("Sistem deteksi dini risiko penyakit kardiovaskular menggunakan **Gaussian Naive Bayes**.")
 
-st.divider()
-st.header('Batch Prediction 📁')
-uploaded_file = st.file_uploader('Upload CSV File', type=['csv'])
+# Gunakan TABS untuk memisahkan mode
+tab_single, tab_batch = st.tabs(["📊 Analisa Personal", "📂 Analisa Massal (Upload)"])
 
-if uploaded_file is not None:
-    df_new = pd.read_csv(uploaded_file)
-    
-    needed_col = ['age', 'gender', 'bmi', 'ap_hi', 'ap_lo', 'cholesterol', 'gluc', 'smoke', 'alco', 'active']
-    if all(col in df_new.columns for col in needed_col):
-        X_batch = df_new[needed_col].values
-        probs = model.predict_proba(X_batch)
+# === TAB 1: SINGLE PREDICTION ===
+with tab_single:
+    if predict_btn:
+        # Prediksi
+        input_data = [[age, gender, bmi, ap_hi, ap_lo, cholesterol, gluc, smoke, alco, active]]
+        prob = model.predict_proba(input_data)[0]
         
-        df_new['Probability'] = probs
-        df_new['Prediction'] = ['Positive' if p > 0.5 else 'Negative' for p in probs]
+        # --- TAMPILAN HASIL (CARD STYLE) ---
+        st.divider()
+        col_res1, col_res2 = st.columns([1, 2])
         
-        st.write('Prediction Result:')
-        st.dataframe(df_new)
-        st.bar_chart(df_new['Prediction'].value_counts())
-        
+        with col_res1:
+            # Container dengan border biar kayak kartu
+            with st.container(border=True):
+                st.write("### Tingkat Risiko")
+                
+                # Logic Warna
+                if prob > 0.7:
+                    status_color = "red"
+                    status_text = "SANGAT TINGGI"
+                    icon = "🚨"
+                elif prob > 0.5:
+                    status_color = "orange"
+                    status_text = "TINGGI"
+                    icon = "⚠️"
+                else:
+                    status_color = "green"
+                    status_text = "RENDAH"
+                    icon = "✅"
+                
+                st.markdown(f"<h1 style='text-align: center; color: {status_color};'>{status_text}</h1>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align: center; font-size: 50px;'>{icon}</div>", unsafe_allow_html=True)
+                st.metric("Probabilitas", f"{prob*100:.1f}%")
+                
+        with col_res2:
+            st.subheader("🔍 Visualisasi Profil")
+            
+            # Helper Plot (Updated Range)
+            def plot_gaussian_mini(feature_idx, feature_name, user_val):
+                mean0, var0 = model._mean[0][feature_idx], model._var[0][feature_idx]
+                mean1, var1 = model._mean[1][feature_idx], model._var[1][feature_idx]
+                std0, std1 = np.sqrt(var0), np.sqrt(var1)
+                
+                start = min(mean0-3*std0, mean1-3*std1, user_val-10)
+                end = max(mean0+3*std0, mean1+3*std1, user_val+10)
+                x = np.linspace(start, end, 200)
+                y0 = (1/np.sqrt(2*np.pi*var0)) * np.exp(-((x-mean0)**2)/(2*var0))
+                y1 = (1/np.sqrt(2*np.pi*var1)) * np.exp(-((x-mean1)**2)/(2*var1))
+                
+                fig, ax = plt.subplots(figsize=(8, 2))
+                ax.fill_between(x, y0, color='green', alpha=0.3, label='Sehat')
+                ax.fill_between(x, y1, color='red', alpha=0.3, label='Berisiko')
+                ax.axvline(user_val, color='black', linewidth=2, linestyle='--')
+                ax.text(user_val, max(y0.max(), y1.max())*0.9, "ANDA", ha='center', fontweight='bold')
+                ax.set_title(feature_name, fontsize=10)
+                ax.axis('off')
+                st.pyplot(fig)
+            
+            # Tampilkan 2 grafik dalam expander biar rapi
+            with st.expander("Lihat Detail Grafik Distribusi", expanded=True):
+                plot_gaussian_mini(3, "Tekanan Darah (Systolic)", ap_hi)
+                plot_gaussian_mini(2, "Body Mass Index (BMI)", bmi)
     else:
-        st.error('Columns Not Found')
+        st.info("👈 Silakan isi data di Sidebar sebelah kiri dan klik tombol 'Analisa Risiko'.")
+
+# === TAB 2: BATCH PREDICTION ===
+with tab_batch:
+    st.write("Upload file CSV untuk memproses banyak data sekaligus.")
+    
+    # Tombol download template (Biar user gak bingung formatnya)
+    sample_data = pd.DataFrame({
+        'age': [45, 60], 'gender': [1, 0], 'bmi': [22.5, 30.1], 
+        'ap_hi': [120, 150], 'ap_lo': [80, 95], 'cholesterol': [1, 3],
+        'gluc': [1, 1], 'smoke': [0, 1], 'alco': [0, 0], 'active': [1, 0]
+    })
+    csv_sample = sample_data.to_csv(index=False).encode('utf-8')
+    st.download_button("⬇️ Download Template CSV", csv_sample, "template_cardio.csv", "text/csv")
+    
+    uploaded_file = st.file_uploader("Upload CSV File", type=['csv'])
+    
+    if uploaded_file:
+        df_new = pd.read_csv(uploaded_file)
+        cols = ['age', 'gender', 'bmi', 'ap_hi', 'ap_lo', 'cholesterol', 'gluc', 'smoke', 'alco', 'active']
+        
+        if all(c in df_new.columns for c in cols):
+            X_batch = df_new[cols].values
+            probs = model.predict_proba(X_batch)
+            
+            df_new['Risk Probability'] = probs
+            df_new['Risk Status'] = ['High' if p > 0.5 else 'Low' for p in probs]
+            
+            st.dataframe(df_new.style.background_gradient(subset=['Risk Probability'], cmap='Reds'))
+            
+            # Download Result
+            res_csv = df_new.to_csv(index=False).encode('utf-8')
+            st.download_button("💾 Simpan Hasil Analisa", res_csv, "hasil_analisa.csv", "text/csv", type='primary')
+        else:
+            st.error("Kolom CSV tidak sesuai template!")
