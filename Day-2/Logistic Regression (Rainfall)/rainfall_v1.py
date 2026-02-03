@@ -78,7 +78,7 @@ class LogisticRegressionManual:
 @st.cache_resource
 def train_model():
     try:
-        df = pd.read_csv('rainfall.csv')
+        df = pd.read_csv('Day-2/Logistic Regression (Rainfall)/rainfall.csv')
         df.dropna(inplace=True)
         
         df['target'] = df['weather_condition'].map({'Sunny' : 0, 'Rainy' : 1})
@@ -104,7 +104,7 @@ st.success(('Berhasil Melatih Model (Bobot & Bias Didapatkan'))
 
 col1, col2 = st.columns(2)
 with col1:
-    with st.expander("📈 Lihat Grafik Training (Loss History)"):
+    with st.expander("📉 Lihat Grafik Training (Loss History)"):
         st.write("Grafik ini menunjukkan bagaimana error model menurun seiring waktu training.")
         loss_data = pd.DataFrame(model.loss_history, columns=['Log Loss'])
         st.line_chart(loss_data)
